@@ -1,52 +1,42 @@
 from selenium import webdriver
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
 import time
-import re
 
-# Setup WebDriver
-options = webdriver.ChromeOptions()
-options.add_argument('--start-maximized')
-driver = webdriver.Chrome(service=Service(), options=options)
+def main():
+    chrome_driver_path = "/opt/homebrew/bin/chromedriver"  # explicit chromedriver path
 
-# Manual Facebook login
-driver.get("https://www.facebook.com/")
-input("🔐 Log in to Facebook in the browser window, then press ENTER here...")
+    options = Options()
+    options.add_argument("--start-maximized")
+    # options.add_argument("--auto-open-devtools-for-tabs")  # optional: open DevTools (inspect)
 
-# Go to the profile page (change this URL to the target)
-driver.get("https://www.facebook.com/ram.orion.3")
-time.sleep(5)  # Wait for profile to load
+    service = Service(chrome_driver_path)
+    driver = webdriver.Chrome(service=service, options=options)
 
-# Scroll to load more posts
-for i in range(5):
-    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    print(f"🔽 Scrolled {i+1}/5 times...")
-    time.sleep(3)
+    try:
+        driver.get("https://www.facebook.com")
+        input("🔐 Please log in manually, then press ENTER here...")
 
-# Find all <a> tags with href containing 'youtube.com'
-youtube_anchors = driver.find_elements(By.XPATH, "//a[contains(@href, 'youtube.com')]")
-print(f"\n🔍 Found {len(youtube_anchors)} <a> elements containing 'youtube.com'")
+        profile_url = "https://www.facebook.com/ram.orion.3"
+        print(f"➡️ Navigating to profile: {profile_url}")
+        driver.get(profile_url)
 
-youtube_links = set()
+        # Scroll down a few times
+        for i in range(5):
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            print(f"🔽 Scrolled {i+1}/5 times...")
+            time.sleep(2)
 
-for a in youtube_anchors:
-    href = a.get_attribute("href")
-    if href:
-        # Extract clean YouTube watch URL with regex (ignore extra parameters)
-        match = re.search(r"(https?://(?:www\.)?youtube\.com/watch\?v=[\w\-]+)", href)
-        if match:
-            clean_url = match.group(1)
-            youtube_links.add(clean_url)
-        else:
-            # Sometimes short youtu.be links or others, you can add more regex if needed
-            youtube_links.add(href)
+        input("⏳ Wait a bit, then press ENTER to dump page source...")
 
-# Print results
-print("\n🎥 Extracted YouTube links:")
-if youtube_links:
-    for link in youtube_links:
-        print(link)
-else:
-    print("❌ No YouTube links found.")
+        # Dump page source (HTML) into a file
+        html_source = driver.page_source
+        with open("fb_profile_source.html", "w", encoding="utf-8") as f:
+            f.write(html_source)
+        print("✅ Saved page source to fb_profile_source.html")
 
-driver.quit()
+    finally:
+        driver.quit()
+
+if __name__ == "__main__":
+    main()
