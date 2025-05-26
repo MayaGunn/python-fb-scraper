@@ -1,80 +1,95 @@
 from selenium import webdriver
-from bs4 import BeautifulSoup
+from selenium.webdriver.firefox.options import Options
 import time
-import requests
-import re
+from bs4 import BeautifulSoup
+import urllib.parse
 
-# === Part 1: Open Facebook and let the user log in manually ===
 
-driver = webdriver.Chrome()
-driver.get("https://www.facebook.com")
-input("🔐 Log in to Facebook in the browser window, then press ENTER here...")
+def extract_youtube_links_and_titles(html):
+    soup = BeautifulSoup(html, "html.parser")
+    anchors = soup.find_all("a", href=True)
 
-# === Part 2: Go to the target profile ===
+    results = []
+    for a in anchors:
+        raw_href = a["href"]
+        if "l.facebook.com/l.php?u=" in raw_href and "youtu" in raw_href:
+            parsed = urllib.parse.parse_qs(urllib.parse.urlparse(raw_href).query)
+            actual_url = parsed.get("u", [""])[0]
+            # Try to find the text that looks like a title nearby
+            title = a.get_text(strip=True)
+            if not title:
+                title = a.find_next(string=True)
+            results.append((actual_url, title))
+    return results
 
-driver.get("https://www.facebook.com/ram.orion.3")  # change to any Facebook username
-time.sleep(5)
 
-# === Part 3: Scroll to load more posts ===
+def make_clean_html(yt_links):
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>YouTube Links Extracted from Facebook</title>
+    <style>
+        body { font-family: sans-serif; padding: 2em; background: #f9f9f9; }
+        .entry { margin-bottom: 1.5em; padding: 1em; background: white; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        a { color: #0654ba; text-decoration: none; font-weight: bold; display: block; margin-bottom: 0.5em; }
+    </style>
+</head>
+<body>
+<h1>YouTube Links Extracted from Facebook</h1>
+"""
 
-SCROLL_PAUSE_TIME = 3
-scroll_times = 10  # increase this to load more posts
+    for url, title in yt_links:
+        html += f'<div class="entry">\n<a href="{url}" target="_blank">{url}</a>\n<p>{title}</p>\n</div>\n'
 
-last_height = driver.execute_script("return document.body.scrollHeight")
-for i in range(scroll_times):
-    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(SCROLL_PAUSE_TIME)
-    new_height = driver.execute_script("return document.body.scrollHeight")
-    if new_height == last_height:
-        break
-    last_height = new_height
+    html += "</body>\n</html>"
+    return html
 
-# === Part 4: Grab the HTML source ===
 
-html = driver.page_source
-driver.quit()
+def main():
+    options = Options()
+    options.add_argument("--width=1200")
+    options.add_argument("--height=800")
 
-# === Part 5: Extract YouTube links from the HTML ===
+    # Launch Firefox
+    driver = webdriver.Firefox(options=options)
 
-soup = BeautifulSoup(html, 'html.parser')
-links = soup.find_all("a", href=True)
-
-youtube_links = []
-for link in links:
-    href = link['href']
-    if "youtube.com/watch" in href or "youtu.be/" in href:
-        youtube_links.append(href)
-
-youtube_links = list(set(youtube_links))  # remove duplicates
-print(f"\n🎥 Found {len(youtube_links)} YouTube links.\n")
-
-# === Part 6: Get video title and thumbnail ===
-
-def extract_video_id(url):
-    if "youtube.com/watch" in url:
-        match = re.search(r"v=([^&]+)", url)
-    elif "youtu.be/" in url:
-        match = re.search(r"youtu\.be/([^?&]+)", url)
-    else:
-        return None
-    return match.group(1) if match else None
-
-def get_youtube_info(url):
     try:
-        response = requests.get(url)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        title = soup.title.string.replace(" - YouTube", "").strip()
-        video_id = extract_video_id(url)
-        thumbnail_url = f"https://img.youtube.com/vi/{video_id}/0.jpg" if video_id else None
-        return {"title": title, "thumbnail": thumbnail_url, "url": url}
-    except Exception as e:
-        return {"title": "Error", "thumbnail": None, "url": url}
+        driver.get("https://www.facebook.com")
+        input("🔐 Please log in manually, then press ENTER here...")
 
-# === Part 7: Print out video info ===
+        profile_url = "https://www.facebook.com/ram.orion.3"
+        print(f"➡️ Navigating to profile: {profile_url}")
+        driver.get(profile_url)
 
-for link in youtube_links:
-    info = get_youtube_info(link)
-    print(f"🎬 Title: {info['title']}")
-    print(f"🖼️ Thumbnail: {info['thumbnail']}")
-    print(f"🔗 Link: {info['url']}")
-    print("------")
+        # Scroll many times to load content
+        scroll_count = 12
+        for i in range(scroll_count):
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            print(f"🔽 Scrolled {i+1}/{scroll_count} times...")
+            time.sleep(2.5)
+
+        input("⏳ Wait a bit if needed, then press ENTER to extract YouTube links...")
+
+        # Save full HTML source
+        html_source = driver.page_source
+        with open("fb_profile_source.html", "w", encoding="utf-8") as f:
+            f.write(html_source)
+        print("✅ Saved full page source to fb_profile_source.html")
+
+        # Extract YouTube links and titles
+        yt_links = extract_youtube_links_and_titles(html_source)
+        print(f"🎵 Found {len(yt_links)} YouTube links.")
+
+        # Save nicely formatted HTML with only the links
+        clean_html = make_clean_html(yt_links)
+        with open("youtube_links.html", "w", encoding="utf-8") as f:
+            f.write(clean_html)
+        print("✅ Saved cleaned HTML to youtube_links.html")
+
+    finally:
+        driver.quit()
+
+
+if __name__ == "__main__":
+    main()
